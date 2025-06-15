@@ -22,7 +22,8 @@
 
     <!-- Warning and Error Messages -->
     <string name="error_endpoint_unset">Error: Endpoint is not set in settings.</string>
-    <string name="error_apikey_unset">Error: OpenAI API Key is not set in settings.</string>
+    <string name="error_apikey_unset">Error: API Key is not set in settings.</string>
+    <string name="error_gemini_apikey_unset">Error: Gemini API Key is not set in settings.</string>
 
     <!-- Settings -->
     <string name="whisper_to_input_settings_title">Whisper To Input Settings</string>
@@ -32,9 +33,12 @@
     <string name="settings_option_openai_api">OpenAI API</string>
     <string name="settings_option_openai_api_default_endpoint">https://api.openai.com/v1/audio/transcriptions</string>
     <string name="settings_option_whisper_webservice">Whisper Webservice</string>
+    <string name="settings_option_gemini_api">Gemini API</string>
+    <string name="settings_gemini_api_default_endpoint">https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest</string>
     <string-array name="settings_request_style_array">
         <item>@string/settings_option_openai_api</item>
         <item>@string/settings_option_whisper_webservice</item>
+        <item>@string/settings_option_gemini_api</item>
     </string-array>
     <string name="settings_endpoint">Endpoint</string>
     <string name="settings_endpoint_desc">The host and port for the OpenAI API or Whisper Webservice endpoint.</string>
@@ -45,6 +49,9 @@
     <string name="settings_api_key">API Key</string>
     <string name="settings_api_key_desc">The official OpenAI API Key to be used in requests.</string>
     <string name="settings_api_key_hint">Enter OpenAI API Key…</string>
+    <string name="settings_gemini_api_key">Gemini API Key</string>
+    <string name="settings_gemini_api_key_desc">The Gemini API Key to be used in requests.</string>
+    <string name="settings_gemini_api_key_hint">Enter Gemini API Key…</string>
     <string name="settings_auto_recording_start">Auto Recording Start</string>
     <string name="settings_auto_recording_start_desc">Whether to automatically start recording upon opening the keyboard.</string>
     <string name="settings_option_yes">Yes</string>

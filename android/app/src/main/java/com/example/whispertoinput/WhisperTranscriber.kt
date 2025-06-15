@@ -20,26 +20,31 @@
 package com.example.whispertoinput
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import androidx.datastore.preferences.core.Preferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import okhttp3.Headers
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.File
 
 class WhisperTranscriber {
     private data class Config(
         val endpoint: String,
         val languageCode: String,
-        val isRequestStyleOpenaiApi: Boolean,
-        val apiKey: String
+        val requestStyle: String,
+        val apiKey: String,
+        val geminiApiKey: String
     )
 
     private val TAG = "WhisperTranscriber"
@@ -55,29 +60,58 @@ class WhisperTranscriber {
     ) {
         suspend fun makeWhisperRequest(): String {
             // Retrieve configs
-            val (endpoint, languageCode, isRequestStyleOpenaiApi, apiKey) = context.dataStore.data.map { preferences: Preferences ->
+            val (endpoint, languageCode, requestStyle, apiKey, geminiApiKey) = context.dataStore.data.map { preferences: Preferences ->
                 Config(
                     preferences[ENDPOINT] ?: "",
                     preferences[LANGUAGE_CODE] ?: "auto",
-                    preferences[REQUEST_STYLE] ?: true,
-                    preferences[API_KEY] ?: ""
+                    preferences[REQUEST_STYLE] ?: REQUEST_STYLE_OPENAI,
+                    preferences[API_KEY] ?: "",
+                    preferences[GEMINI_API_KEY] ?: ""
                 )
             }.first()
+
+            // Make request
+            val client = OkHttpClient()
+
+            if (requestStyle == REQUEST_STYLE_GEMINI) {
+                if (geminiApiKey.isEmpty()) {
+                    throw Exception(context.getString(R.string.error_gemini_apikey_unset))
+                }
+                if (endpoint.isEmpty()) {
+                    throw Exception(context.getString(R.string.error_endpoint_unset))
+                }
+                val url = "$endpoint:generateContent?key=$geminiApiKey"
+                val request = buildGeminiRequest(filename, mediaType, url)
+                val response = client.newCall(request).execute()
+
+                if (!response.isSuccessful || response.code / 100 != 2) {
+                    throw Exception(response.body!!.string().replace('\n', ' '))
+                }
+
+                val responseBody = response.body!!.string()
+                val jsonObject = JSONObject(responseBody)
+                val text = jsonObject.getJSONArray("candidates")
+                    .getJSONObject(0)
+                    .getJSONObject("content")
+                    .getJSONArray("parts")
+                    .getJSONObject(0)
+                    .getString("text")
+                return text.trim() + attachToEnd
+            }
 
             // Foolproof message
             if (endpoint == "") {
                 throw Exception(context.getString(R.string.error_endpoint_unset))
             }
 
-            // Make request
-            val client = OkHttpClient()
+            val isRequestStyleOpenaiApi = requestStyle == REQUEST_STYLE_OPENAI
             val request = buildWhisperRequest(
                 context,
                 filename,
                 "$endpoint?encode=true&task=transcribe&language=$languageCode&word_timestamps=false&output=txt",
                 mediaType,
                 apiKey,
-                isRequestStyleOpenaiApi
+                isRequestStyleOpenaiApi,
             )
             val response = client.newCall(request).execute()
 
@@ -133,6 +167,34 @@ class WhisperTranscriber {
         currentTranscriptionJob = job
     }
 
+    private fun buildGeminiRequest(
+        filename: String,
+        mediaType: String,
+        url: String
+    ): Request {
+        val file = File(filename)
+        val audioBytes = file.readBytes()
+        val base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
+
+        val prompt = "Transcribe this audio recording."
+
+        val jsonPayload = JSONObject()
+        val contentsArray = JSONObject()
+        val partsArray = org.json.JSONArray()
+        partsArray.put(JSONObject().put("text", prompt))
+        partsArray.put(JSONObject().put("inlineData", JSONObject()
+            .put("mimeType", mediaType)
+            .put("data", base64Audio)))
+        contentsArray.put("parts", partsArray)
+        jsonPayload.put("contents", org.json.JSONArray().put(contentsArray))
+
+        val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+
+        return Request.Builder()
+            .url(url)
+            .post(requestBody)
+            .build()
+    }
     private fun buildWhisperRequest(
         context: Context,
         filename: String,

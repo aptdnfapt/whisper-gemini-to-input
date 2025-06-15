@@ -49,16 +49,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import android.widget.TextView
 
 // 200 and 201 are an arbitrary values, as long as they do not conflict with each other
 private const val MICROPHONE_PERMISSION_REQUEST_CODE = 200
 private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 201
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
-val REQUEST_STYLE = booleanPreferencesKey("is-openai-api-request-style")
+val REQUEST_STYLE = stringPreferencesKey("request_style")
 val ENDPOINT = stringPreferencesKey("endpoint")
 val LANGUAGE_CODE = stringPreferencesKey("language-code")
 val API_KEY = stringPreferencesKey("api-key")
+val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
 val AUTO_RECORDING_START = booleanPreferencesKey("is-auto-recording-start")
+
+const val REQUEST_STYLE_OPENAI = "openai"
+const val REQUEST_STYLE_WHISPER = "whisper"
+const val REQUEST_STYLE_GEMINI = "gemini"
 
 class MainActivity : AppCompatActivity() {
     private var setupSettingItemsDone: Boolean = false
@@ -191,11 +197,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    inner class SettingDropdown(
+    inner class SettingDropdown<T>(
         private val viewId: Int,
-        private val preferenceKey: Preferences.Key<Boolean>,
-        private val stringToValue: HashMap<String, Boolean>,
-        private val defaultValue: Boolean = true
+        private val preferenceKey: Preferences.Key<T>,
+        private val stringToValue: Map<String, T>,
+        private val defaultValue: T
     ): SettingItem() {
         override fun setup(): Job {
             return CoroutineScope(Dispatchers.Main).launch {
@@ -209,20 +215,31 @@ class MainActivity : AppCompatActivity() {
                         btnApply.isEnabled = true
                         // Deal with individual spinner
                         if (parent.id == R.id.spinner_request_style) {
-                            val selectedItem = parent.getItemAtPosition(pos)
-                            if (selectedItem == getString(R.string.settings_option_openai_api)) {
-                                val endpointEditText: EditText = findViewById<EditText>(R.id.field_endpoint)
-                                endpointEditText.setText(getString(R.string.settings_option_openai_api_default_endpoint))
+                            val selectedItem = parent.getItemAtPosition(pos).toString()
+                            val endpointEditText: EditText = findViewById(R.id.field_endpoint)
+                            val endpointDescription: TextView = findViewById(R.id.description_endpoint)
+                            when (selectedItem) {
+                                getString(R.string.settings_option_openai_api) -> {
+                                    endpointEditText.setText(getString(R.string.settings_option_openai_api_default_endpoint))
+                                    endpointDescription.text = getString(R.string.settings_endpoint_desc)
+                                }
+                                getString(R.string.settings_option_gemini_api) -> {
+                                    endpointEditText.setText(getString(R.string.settings_gemini_api_default_endpoint))
+                                    endpointDescription.text = getString(R.string.settings_endpoint_desc)
+                                }
+                                else -> {
+                                    endpointDescription.text = getString(R.string.settings_endpoint_desc)
+                                }
                             }
                         }
                     }
                     override fun onNothingSelected(parent: AdapterView<*>) { }
                 }
 
-                val valueToString = stringToValue.map { (k, v) -> v to k }.toMap()
+                val valueToString = stringToValue.entries.associateBy({ it.value }) { it.key }
                 // Read data. If none, apply default value.
-                val settingValue: Boolean? = readSetting(preferenceKey)
-                val value: Boolean = settingValue ?: defaultValue
+                val settingValue: T? = readSetting(preferenceKey)
+                val value: T = settingValue ?: defaultValue
                 val string: String = valueToString[value]!!
                 if (settingValue == null) {
                     writeSetting(preferenceKey, defaultValue)
@@ -236,8 +253,8 @@ class MainActivity : AppCompatActivity() {
         }
         override suspend fun apply() {
             if (!isDirty) return
-            val selectedItem = findViewById<Spinner>(viewId).selectedItem
-            val newValue: Boolean = stringToValue[selectedItem]!!
+            val selectedItem = findViewById<Spinner>(viewId).selectedItem.toString()
+            val newValue: T = stringToValue[selectedItem]!!
             writeSetting(preferenceKey, newValue)
             isDirty = false
         }
@@ -249,16 +266,19 @@ class MainActivity : AppCompatActivity() {
         CoroutineScope(Dispatchers.Main).launch {
             val settingItems = arrayOf(
                 SettingDropdown(R.id.spinner_request_style, REQUEST_STYLE, hashMapOf(
-                    getString(R.string.settings_option_openai_api) to true,
-                    getString(R.string.settings_option_whisper_webservice) to false,
-                )),
+                    getString(R.string.settings_option_openai_api) to REQUEST_STYLE_OPENAI,
+                    getString(R.string.settings_option_whisper_webservice) to REQUEST_STYLE_WHISPER,
+                    getString(R.string.settings_option_gemini_api) to REQUEST_STYLE_GEMINI,
+                ), REQUEST_STYLE_OPENAI),
                 SettingText(R.id.field_endpoint, ENDPOINT, getString(R.string.settings_option_openai_api_default_endpoint)),
                 SettingText(R.id.field_language_code, LANGUAGE_CODE),
                 SettingText(R.id.field_api_key, API_KEY),
+                SettingText(R.id.field_gemini_api_key, GEMINI_API_KEY),
                 SettingDropdown(R.id.spinner_auto_recording_start, AUTO_RECORDING_START, hashMapOf(
                     getString(R.string.settings_option_yes) to true,
                     getString(R.string.settings_option_no) to false,
-                )),
+                ), true
+                ),
             )
             val btnApply: Button = findViewById(R.id.btn_settings_apply)
             btnApply.isEnabled = false
